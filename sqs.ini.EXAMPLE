@@ -1,0 +1,13 @@
+# Configuration file for send-to-sqs.py
+# Copy this file to sqs.ini (same directory as send-to-sqs.py) and fill in your values.
+#
+# The queue referenced by sqs-queue must be a FIFO queue (name ends in ".fifo"), since
+# send-to-sqs.py uses MessageGroupId/MessageDeduplicationId, which standard queues reject.
+# It must be the same queue configured as the "server" option of a protocol=sqs
+# [incoming] section in dupReport.rc.
+
+[AWS Credentials]
+aws-key = YOUR_AWS_ACCESS_KEY_ID
+aws-secret-key = YOUR_AWS_SECRET_ACCESS_KEY
+region = us-east-1
+sqs-queue = https://sqs.us-east-1.amazonaws.com/123456789012/YourQueueName.fifo

@@ -3,6 +3,7 @@
 - Read options file using ConfigParser() instead of SafeConfigParser(), which has been deprecated
 - Update regex strings to avoid syntax errors
 - Renamed primary Git branch from "master" to "main"
+- Added support for AWS SQS as an incoming server protocol (protocol=sqs), as an alternative to IMAP/POP3. Includes send-to-sqs.py/.sh/.bat helper scripts for publishing Duplicati job results to an SQS queue as a Duplicati run-script-after hook. Requires the boto3 package if using send-to-sqs.py, or the AWS CLI for the .sh/.bat variants. See docs/RcFileConfig-EmailManagement.md for details.
 
 3.0.9
 -----

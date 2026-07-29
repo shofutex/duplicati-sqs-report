@@ -80,7 +80,8 @@ lineParts = [
 serverRcParts = {
     'imap': ['protocol', 'server', 'port', 'encryption', 'account', 'password', 'keepalive', 'folder', 'unreadonly', 'markread', 'authentication'],
     'pop3': ['protocol', 'server', 'port', 'encryption', 'account', 'password', 'keepalive', 'authentication'],
-    'smtp': ['protocol', 'server', 'port', 'encryption', 'account', 'password', 'keepalive', 'sender', 'sendername', 'receiver', 'authentication']
+    'smtp': ['protocol', 'server', 'port', 'encryption', 'account', 'password', 'keepalive', 'sender', 'sendername', 'receiver', 'authentication'],
+    'sqs':  ['protocol', 'server', 'region', 'account', 'password', 'keepalive'],
     }
 
 class EmailManager:
@@ -95,7 +96,7 @@ class EmailManager:
         for server in serverlist:
             isValid, options = self.validateServerOptions(server)
             if isValid:
-                if options['protocol'] in ['imap', 'pop3']:
+                if options['protocol'] in ['imap', 'pop3', 'sqs']:
                     self.incoming[server] =  EmailServer(server, options)
                 else: # Smtp
                     # Before you go blindly opening up an outgoing connection....
@@ -183,7 +184,7 @@ class EmailManager:
         elif 'protocol' not in rcOptions:
             globs.log.write(globs.SEV_NOTICE, function='EmailManager', action='validateServerOptions', msg='No protocol specified for server \'{}\''.format(server))
             isValid = False
-        elif rcOptions['protocol'] not in ['imap', 'pop3', 'smtp']:
+        elif rcOptions['protocol'] not in ['imap', 'pop3', 'smtp', 'sqs']:
             globs.log.write(globs.SEV_NOTICE, function='EmailManager', action='validateServerOptions', msg='Invalid protocol \'{}\' specified for email server \'{}\''.format(rcOptions['protocol'], server))
             isValid = False
 
@@ -329,6 +330,26 @@ class EmailServer:
                     globs.log.write(globs.SEV_ERROR,  function='EmailServer', action='connect:Smtp', msg='SMTP connection Error: {}'.format(e))
                     self.available = False
                     return None
+            elif self.options['protocol'] == 'sqs':
+                try:
+                    import boto3
+                except ImportError:
+                    globs.log.write(globs.SEV_ERROR, function='EmailServer', action='connect:Sqs', msg='boto3 module not installed. Run \'pip3 install boto3\' to use SQS support.')
+                    self.available = False
+                    return None
+                try:
+                    globs.log.write(globs.SEV_DEBUG, function='EmailServer', action='connect:Sqs', msg='Connecting to SQS queue \'{}\' in region \'{}\''.format(self.options['server'], self.options['region']))
+                    self.serverconnect = boto3.client('sqs',
+                        aws_access_key_id=self.options['account'],
+                        aws_secret_access_key=self.options['password'],
+                        region_name=self.options['region'])
+                    self.available = True
+                    return None
+                except Exception:
+                    e = sys.exc_info()[0]
+                    globs.log.write(globs.SEV_ERROR, function='EmailServer', action='connect:Sqs', msg='SQS connection Error: {}'.format(e))
+                    self.available = False
+                    return None
             else:   # Bad protocol specification
                 globs.log.write(globs.SEV_NOTICE, function='EmailServer', action='connect', msg='Invalid protocol specification: {}. Aborting program.'.format(self.options['protocol']))
                 globs.closeEverythingAndExit(1)
@@ -342,6 +363,8 @@ class EmailServer:
         if self.serverconnect != None:
             if self.options['protocol'] in ['pop3', 'smtp']:
                 self.serverconnect.quit()
+            elif self.options['protocol'] == 'sqs':
+                pass    # boto3 client has no persistent connection to close
             else: #IMAP
                 self.serverconnect.close()
         return None
@@ -376,6 +399,23 @@ class EmailServer:
                 self.nextEmail = 0
                 return 0
             self.newEmails = list(data[0].split())   # Get list of new emails
+            self.numEmails = len(self.newEmails)
+            self.nextEmail = -1     # processNextMessage() pre-increments message index. Initializing to -1 ensures the pre-increment start at 0
+            return self.numEmails
+        elif self.options['protocol'] == 'sqs':
+            queue = self.serverconnect.get_queue_url(QueueName=self.options['server'])['QueueUrl']
+            self.newEmails = []
+            messagesRemaining = True
+            while messagesRemaining:
+                # SQS allows up to 10 messages per receive_message() call. Keep polling until the queue is drained.
+                resp = self.serverconnect.receive_message(QueueUrl=queue, AttributeNames=['All'], MessageAttributeNames=['subject', 'date'], MaxNumberOfMessages=10)
+                if 'Messages' in resp:
+                    for msg in resp['Messages']:
+                        self.newEmails.append(msg)
+                        # Delete now - SQS has no concept of "unread". If processing fails below, the message is lost, matching prior behavior.
+                        self.serverconnect.delete_message(QueueUrl=queue, ReceiptHandle=msg['ReceiptHandle'])
+                else:
+                    messagesRemaining = False
             self.numEmails = len(self.newEmails)
             self.nextEmail = -1     # processNextMessage() pre-increments message index. Initializing to -1 ensures the pre-increment start at 0
             return self.numEmails
@@ -482,6 +522,13 @@ class EmailServer:
                 return '<INVALID>'
             globs.log.write(globs.SEV_DEBUG, function='EmailServer', action='processNextMessage', msg='Server.fetch(): retVal=[{}] data=[{}]'.format(retVal,data))
             emailParts['header']['date'], emailParts['header']['subject'], emailParts['header']['messageId'], emailParts['header']['content-transfer-encoding'] = self.extractHeaders(data[0][1].decode('utf-8'))
+        elif self.options['protocol'] == 'sqs':
+            # SQS messages carry 'subject'/'date' as message attributes (set by the sender, e.g. send-to-sqs.py) rather than email headers.
+            msg = self.newEmails[self.nextEmail]
+            emailParts['header']['date'] = msg['MessageAttributes']['date']['StringValue']
+            emailParts['header']['subject'] = msg['MessageAttributes']['subject']['StringValue']
+            emailParts['header']['messageId'] = msg['MD5OfBody']
+            emailParts['header']['content-transfer-encoding'] = '7bit'
         else:   # Invalid protocol spec
             globs.log.write(globs.SEV_NOTICE, function='EmailServer', action='processNextMessage', msg='Invalid protocol specification: {}.'.format(self.options['protocol']))
             return None
@@ -579,6 +626,8 @@ class EmailServer:
                 emailParts['body']['fullbody'] = data[0][1].decode('utf-8')  # Get message body
             else:
                 emailParts['body']['fullbody'] = data[1][1].decode('utf-8')  # Get message body
+        elif self.options['protocol'] == 'sqs':
+            emailParts['body']['fullbody'] = self.newEmails[self.nextEmail]['Body']
 
         globs.log.write(globs.SEV_DEBUG, function='EmailServer', action='processNextMessage', msg='Message Body=[{}]'.format(emailParts['body']['fullbody']))
 

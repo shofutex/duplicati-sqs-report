@@ -2,7 +2,7 @@
 
 dupReport needs to know where your email servers are located to properly access and parse Duplicati log emails. Email servers can be one of two types:
 
-- **Incoming**: servers that host Duplicati status emails that are read into the program. dupReport can access these systems using either IMAP or POP3 protocols. dupReport will pull mail from as many incoming email servers as you specify, but you must specify at least one incoming email server.
+- **Incoming**: servers that host Duplicati status emails that are read into the program. dupReport can access these systems using IMAP, POP3, or - as an alternative to email entirely - an AWS SQS queue. dupReport will pull mail from as many incoming email servers as you specify, but you must specify at least one incoming email server.
 - **Outgoing**: server(s) that you use to send out dupReport results. These servers must be running the SMTP protocol. You can specify more than one outgoing server, but you must specify at least one . dupReport will attempt to connect to the servers - in the order they are specified - until it is able to successfully connect to one. It will then use that outgoing server to send email for the remainder of the program. 
 
 ------
@@ -77,7 +77,7 @@ Each server section uses similar options to describe the server's options. Each 
 protocol=<name>
 ```
 
-Specify the transport protocol used to connect to the email server. Valid '\<name>' options for incoming servers are 'imap' and 'pop3'. Outgoing servers may only use 'smtp' as the '\<name>' option. dupReport will use this option to determine if this is an "incoming" or "outgoing" server. **(IMAP, POP3, SMTP)** 
+Specify the transport protocol used to connect to the email server. Valid '\<name>' options for incoming servers are 'imap', 'pop3', and 'sqs'. Outgoing servers may only use 'smtp' as the '\<name>' option. dupReport will use this option to determine if this is an "incoming" or "outgoing" server. **(IMAP, POP3, SMTP, SQS)** 
 
 **IMAP is highly recommended** for incoming servers. POP3 has some severe limitations when it comes to handling email. If you must use POP3 for whatever reason, make sure the "Leave messages on server" option is enabled in all your POP3 clients and/or your POP3 server. The default behavior for POP3 is to remove messages from the email server as soon as they are read, so using multiple email clients on the same server will interfere with each's ability to read email. Setting this option in your email server tells the server it to leave the messages on the server for other clients to use. Different systems configure this option differently, so check the documentation for your email system to see where this is set.
 
@@ -174,7 +174,33 @@ sendername = dupReport Summary
 
 Defines the "friendly name" for the email account used to send dupReport results. **(SMTP)**
 
+------
 
+**Using AWS SQS instead of email**
+
+As an alternative to reading Duplicati status emails off an IMAP/POP3 server, dupReport can read Duplicati job results directly from an AWS SQS queue. This is useful if you don't want to run Duplicati's results through an email system at all.
+
+To use this, configure Duplicati to run one of the included publisher scripts after each backup job (via Duplicati's `--run-script-after` option). That script publishes the job's result output to an SQS FIFO queue. Then add a server section to your dupReport.rc file with `protocol = sqs`:
+
+- **`send-to-sqs.py`** (any OS with Python 3 + `boto3`): reads AWS credentials & queue info from `sqs.ini` (copy `sqs.ini.EXAMPLE` to get started).
+- **`send-to-sqs.sh`** (Linux/macOS): uses the `aws` CLI instead of Python, so it relies on however the AWS CLI itself is configured (`aws configure`, an IAM role, or `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) rather than `sqs.ini`. Set the queue URL via the `SQS_QUEUE_URL` environment variable or by editing the default near the top of the script.
+- **`send-to-sqs.bat`** (Windows): same idea as `send-to-sqs.sh`, using `aws.exe`. It always exits 0 and redirects its own output to `%TMP%\send-to-sqs-debug.txt`, so a failed publish never shows up as a Duplicati backup warning; check that file for troubleshooting.
+
+Whichever script you use, the underlying dupReport-side configuration is the same:
+
+```
+[awssqs]
+protocol = sqs
+server = YourQueueName.fifo
+region = us-east-1
+account = <AWS access key ID>
+password = <AWS secret access key>
+keepalive = false
+```
+
+The queue referenced must be a FIFO queue. Note that `server=` here is the queue **name**, not its URL - dupReport looks up the queue's URL itself via the AWS API. This is different from `sqs.ini`'s `sqs-queue=` setting (used by `send-to-sqs.py`), which does require the full queue URL, since that script sends messages directly without a lookup.
+
+`account=` and `password=` are your AWS access key ID and secret access key, respectively, for an IAM identity with `sqs:GetQueueUrl`, `sqs:ReceiveMessage`, and `sqs:DeleteMessage` permissions on the queue. Reading SQS support requires the `boto3` package (`pip3 install boto3`). Options that only apply to IMAP/POP3 (`port`, `encryption`, `folder`, `unreadonly`, `markread`, `authentication`) are not used for SQS servers. **(SQS)**
 
 
 

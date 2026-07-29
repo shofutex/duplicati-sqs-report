@@ -4,6 +4,8 @@ dupReport has been formally tested on Linux (Debian 8 and 9) and Windows 10 and 
 
 In addition to the dupReport program files, the only other software dupReport needs is Python3. Installation instructions for Python are beyond our scope here, but instructions are easily searchable on the Internet.
 
+If you plan to use an AWS SQS queue as an incoming server (`protocol = sqs`, see [Email Management](RcFileConfig-EmailManagement.md)), you will also need the `boto3` package: `pip3 install boto3`. This is optional and only required if you use SQS.
+
 
 
 

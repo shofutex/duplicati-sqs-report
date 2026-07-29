@@ -156,6 +156,21 @@ keepalive = false
 markread = false
 authentication = basic
 
+# Example settings for an incoming AWS SQS queue, as an alternative to IMAP/POP3.
+# Duplicati job results are published to the queue by the included send-to-sqs.py script
+# (run as a Duplicati --run-script-after hook) instead of being emailed.
+# The queue must be a FIFO queue. "server" is the queue NAME (not the full queue URL) -
+# dupReport looks up the URL itself via the AWS API. This differs from sqs.ini's "sqs-queue"
+# setting (used by send-to-sqs.py), which does need the full queue URL.
+# Add this section's name to [main]emailservers= to enable it.
+[awssqs]
+protocol = sqs
+server = YourQueueName.fifo
+region = us-east-1
+account = YOUR_AWS_ACCESS_KEY_ID
+password = YOUR_AWS_SECRET_ACCESS_KEY
+keepalive = false
+
 # Backup-specific sections. Put information about specific backup jobs here
 # Each section must match the EXACT name of one of the backup jobs (i.e., <source>-<destination>)
 
