@@ -2,7 +2,7 @@
 
 # WELCOME TO my fork of dupReport that supports SQS
 
-dupReport is a Python-based email collection and reporting system for Duplicati. It will gather all your Duplicati backup status emails and produce a summary report on what Duplicati backup jobs were run and their success or failure.
+dupReport is a Python-based email collection and reporting system for Duplicati. It will gather all your Duplicati backup status emails and produce a summary report on what Duplicati backup jobs were run and their success or failure. **I didn't want to use email for this workflow, and I wanted to learn how to use SQS, so back in 2020 I made an SQS-fork of this codebase. I've gone back and worked to integrate it with updates HandyGuySoftware made after my initial fork.**
 
 Here is a list of some of dupReport's most important features:
 
@@ -18,7 +18,6 @@ Here is a list of some of dupReport's most important features:
 - Send results to email or local files (or both)
 - User-defined reporting formats with configurable column and organization options
 - Syslog-style logging format for easier searching and organization.
-
 - Ability to send log output to an external syslog server or log aggregator.
 - Support for the Apprise push notification service (<https://github.com/caronc/apprise>)
 
@@ -27,6 +26,8 @@ Please see the (new, updated, and reorganized) documentation on these and all th
 ------
 
 # Available Code Branches
+
+I will update the info below about this fork's code branches a little more as time goes on.
 
 Beginning with release 2.1, the branch structure of the dupReport repository has changed. We have moved to a more organized structure based on [this article by Vincent Driessen](http://nvie.com/posts/a-successful-git-branching-model/) (with some modifications). (Thanks to @DocFraggle for suggesting this structure.)
 
